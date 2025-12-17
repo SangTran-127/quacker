@@ -1,4 +1,4 @@
-module github.com/SangTran-127/ducker
+module github.com/SangTran-127/quacker
 
 go 1.25.1
 
