@@ -1,4 +1,7 @@
-package quacker
+// Copyright (c) 2025 Tran Quang Sang
+// SPDX-License-Identifier: MIT
+
+package workerpool
 
 import (
 	"context"
@@ -97,6 +100,7 @@ func NewWorkerPool[T Task[T]](ctx context.Context, cfg *WorkerPoolConfig[T]) (*W
 // or the context is cancelled. This method does not block; workers run in the background.
 // Returns nil on successful startup.
 func (w *WorkerPool[T]) Start(ctx context.Context) error {
+	// TODO: compare when case 10 worker vs 1 task
 	for i := 0; i < w.numWorkers; i++ {
 		workerId := i
 		w.errgroup.Go(func() error {
@@ -137,6 +141,11 @@ func (w *WorkerPool[T]) Stop() {
 // Returns an error if any worker encountered an error during execution
 // or if the context was cancelled.
 func (w *WorkerPool[T]) Wait() error {
+	return w.errgroup.Wait()
+}
+
+func (w *WorkerPool[T]) StopAndWait() error {
+	close(w.taskQueue)
 	return w.errgroup.Wait()
 }
 
