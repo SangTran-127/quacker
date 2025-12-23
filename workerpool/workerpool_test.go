@@ -108,7 +108,7 @@ func TestWorkerPool_ConcurrentPush(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -173,7 +173,7 @@ func TestWorkerPool_ErrorHandling(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -221,7 +221,7 @@ func TestWorkerPool_PanicHandling(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -259,7 +259,7 @@ func TestWorkerPool_MetricsThreadSafe(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -362,7 +362,7 @@ func TestWorkerPool_TaskCancellation(t *testing.T) {
 		}
 	}
 
-	pool.Start(ctx)
+	pool.Start()
 
 	pool.Stop()
 

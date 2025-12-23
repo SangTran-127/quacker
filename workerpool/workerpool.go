@@ -99,7 +99,7 @@ func NewWorkerPool[T Task[T]](ctx context.Context, cfg *WorkerPoolConfig[T]) (*W
 // Each worker runs independently and will process tasks from the queue until Stop is called
 // or the context is cancelled. This method does not block; workers run in the background.
 // Returns nil on successful startup.
-func (w *WorkerPool[T]) Start(ctx context.Context) error {
+func (w *WorkerPool[T]) Start() error {
 	// TODO: compare when case 10 worker vs 1 task
 	for i := 0; i < w.numWorkers; i++ {
 		workerId := i
