@@ -44,7 +44,7 @@ func TestNewWorkerPool(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name: "it should work",
+			name: "config with valid field",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-1",
 				NumWorkers: 1,
@@ -53,7 +53,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: false,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid number of workers",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-2",
 				NumWorkers: 0,
@@ -62,7 +62,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid task sizes",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-3",
 				NumWorkers: 1,
@@ -71,7 +71,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid both worker number and task size",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-4",
 				NumWorkers: 0,
@@ -108,7 +108,7 @@ func TestWorkerPool_ConcurrentPush(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -173,7 +173,7 @@ func TestWorkerPool_ErrorHandling(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -221,7 +221,7 @@ func TestWorkerPool_PanicHandling(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -259,7 +259,7 @@ func TestWorkerPool_MetricsThreadSafe(t *testing.T) {
 		t.Errorf("cannot initialize new worker pool %v", err)
 	}
 
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(); err != nil {
 		t.Errorf("cannot start pool %s, error: %v", pool.name, err)
 	}
 
@@ -362,7 +362,7 @@ func TestWorkerPool_TaskCancellation(t *testing.T) {
 		}
 	}
 
-	pool.Start(ctx)
+	pool.Start()
 
 	pool.Stop()
 
