@@ -1,6 +1,23 @@
 // Copyright (c) 2025 Tran Quang Sang
 // SPDX-License-Identifier: MIT
 
+// Package fanin provides a generic fan-in concurrency pattern implementation.
+// It merges multiple input channels into a single output channel, allowing
+// concurrent producers to feed into a unified consumer stream.
+//
+// The fan-in pattern is useful when you have multiple goroutines producing
+// values that need to be processed by a single consumer, such as aggregating
+// results from parallel workers or combining multiple event streams.
+//
+// Example usage:
+//
+//	fanIn, _ := fanin.NewFanIn[int]()
+//	fanIn.Add(producer1)
+//	fanIn.Add(producer2)
+//	out := fanIn.Run(ctx)
+//	for v := range out {
+//	    // process merged values
+//	}
 package fanin
 
 import (
@@ -10,29 +27,54 @@ import (
 	"sync/atomic"
 )
 
+// FanInObserver defines callbacks for monitoring fan-in lifecycle events.
+// Implementations can use these hooks for logging, metrics collection,
+// or coordinating with external systems.
 type FanInObserver interface {
+	// OnInputAdded is called each time a new input channel is registered via Add().
 	OnInputAdded()
+	// OnInputClosed is called when an input channel is closed by its producer.
 	OnInputClosed()
 }
 
+// FanInConfig holds configuration options for creating a FanIn instance.
 type FanInConfig struct {
+	// BufferSize specifies the capacity of the output channel buffer.
+	// A value of 0 creates an unbuffered channel. Must be non-negative.
 	BufferSize int
-	Observer   FanInObserver
+	// Observer receives callbacks for fan-in lifecycle events.
+	// Can be nil if no observation is needed.
+	Observer FanInObserver
 }
 
+// Option is a functional option for configuring a FanIn instance.
+// Options are passed to NewFanIn to customize behavior.
 type Option func(*FanInConfig)
 
+// FanIn merges multiple input channels of type T into a single output channel.
+// It is safe for concurrent use; multiple goroutines can call Add concurrently
+// before Run is called. Once Run is called, no more inputs can be added.
+//
+// FanIn respects context cancellation and will gracefully shut down all
+// internal goroutines when the context is cancelled.
 type FanIn[T any] struct {
 	cfg     *FanInConfig
 	mu      sync.Mutex
 	inputs  []<-chan T
 	running atomic.Bool
-	// Flag done for user know when it done
-	done chan struct{}
+	done    chan struct{}
 }
 
+// NewFanIn creates a new FanIn instance with the provided options.
+// It returns an error if the configuration is invalid (e.g., negative buffer size).
+//
+// Options can be used to configure buffer size and attach an observer:
+//
+//	fanIn, err := fanin.NewFanIn[string](
+//	    fanin.WithBufferSize(100),
+//	    fanin.WithObserver(myObserver),
+//	)
 func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
-
 	cfg := &FanInConfig{
 		BufferSize: 0,
 	}
@@ -50,6 +92,13 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 	}, nil
 }
 
+// Add registers an input channel to be merged into the fan-in output.
+// It must be called before Run; calling Add after Run returns an error.
+//
+// Add is safe for concurrent use from multiple goroutines.
+// The channel will be read until it is closed or the context passed to Run is cancelled.
+//
+// Returns an error if called after Run has been invoked.
 func (f *FanIn[T]) Add(ch <-chan T) error {
 	if f.running.Load() {
 		return fmt.Errorf("fanin: Add() called after Run()")
@@ -67,8 +116,17 @@ func (f *FanIn[T]) Add(ch <-chan T) error {
 	return nil
 }
 
+// Run starts the fan-in operation and returns the merged output channel.
+// It spawns a goroutine for each registered input channel to forward values
+// to the output channel. The output channel is closed when all input channels
+// are closed or the context is cancelled.
+//
+// Run can only be called once per FanIn instance. Calling Run multiple times
+// will panic. After Run is called, Add will return an error.
+//
+// The returned channel should be consumed by the caller. When the context is
+// cancelled, all internal goroutines will exit gracefully without leaking.
 func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
-	// Atomic already thread-safe, no need lock
 	if !f.running.CompareAndSwap(false, true) {
 		panic("fanin: Run() called multiple times")
 	}
@@ -123,6 +181,14 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	return out
 }
 
+// Done returns a channel that is closed when the fan-in operation completes.
+// This occurs when all input channels have been closed and drained, or when
+// the context passed to Run is cancelled.
+//
+// Done can be used to wait for the fan-in to finish:
+//
+//	<-fanIn.Done()
+//	fmt.Println("all inputs processed")
 func (f *FanIn[T]) Done() chan struct{} {
 	return f.done
 }
