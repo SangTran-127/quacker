@@ -98,7 +98,7 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 // Add is safe for concurrent use from multiple goroutines.
 // The channel will be read until it is closed or the context passed to Run is cancelled.
 //
-// Returns an error if called after Run has been invoked.
+// Panic an error if called after Run has been invoked.
 func (f *FanIn[T]) Add(ch <-chan T) {
 	if f.running.Load() {
 		panic("fanin: Add() called after Run()")
@@ -184,8 +184,13 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 // This occurs when all input channels have been closed and drained, or when
 // the context passed to Run is cancelled.
 //
+// Returns nil if called before Run(). Receiving from a nil channel blocks forever,
+// so callers should ensure Run() has been called before using Done().
+//
 // Done can be used to wait for the fan-in to finish:
 //
+//	out := fanIn.Run(ctx)
+//	// ... consume out ...
 //	<-fanIn.Done()
 //	fmt.Println("all inputs processed")
 func (f *FanIn[T]) Done() <-chan struct{} {
