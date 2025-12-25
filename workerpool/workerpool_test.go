@@ -44,7 +44,7 @@ func TestNewWorkerPool(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name: "it should work",
+			name: "config with valid field",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-1",
 				NumWorkers: 1,
@@ -53,7 +53,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: false,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid number of workers",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-2",
 				NumWorkers: 0,
@@ -62,7 +62,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid task sizes",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-3",
 				NumWorkers: 1,
@@ -71,7 +71,7 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name: "it should work",
+			name: "config with invalid both worker number and task size",
 			config: WorkerPoolConfig[*mockTask]{
 				Name:       "test-config-validate-4",
 				NumWorkers: 0,
