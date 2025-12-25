@@ -27,6 +27,8 @@ type FanIn[T any] struct {
 	mu      sync.Mutex
 	inputs  []<-chan T
 	running atomic.Bool
+	// Flag done for user know when it done
+	done chan struct{}
 }
 
 func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
@@ -82,8 +84,8 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	// If store in struct, we can't Run(ctx) again because once it close
 	// We cannot call it again
 	out := make(chan T, f.cfg.BufferSize)
+	f.done = make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(len(inputs))
 	for _, ch := range inputs {
 		wg.Go(func() {
 			for {
@@ -115,7 +117,12 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	go func() {
 		wg.Wait()
 		close(out)
+		close(f.done)
 	}()
 
 	return out
+}
+
+func (f *FanIn[T]) Done() chan struct{} {
+	return f.done
 }
