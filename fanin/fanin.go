@@ -99,9 +99,9 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 // The channel will be read until it is closed or the context passed to Run is cancelled.
 //
 // Returns an error if called after Run has been invoked.
-func (f *FanIn[T]) Add(ch <-chan T) error {
+func (f *FanIn[T]) Add(ch <-chan T) {
 	if f.running.Load() {
-		return fmt.Errorf("fanin: Add() called after Run()")
+		panic("fanin: Add() called after Run()")
 	}
 
 	f.mu.Lock()
@@ -113,7 +113,6 @@ func (f *FanIn[T]) Add(ch <-chan T) error {
 		f.cfg.Observer.OnInputAdded()
 	}
 
-	return nil
 }
 
 // Run starts the fan-in operation and returns the merged output channel.
@@ -189,6 +188,6 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 //
 //	<-fanIn.Done()
 //	fmt.Println("all inputs processed")
-func (f *FanIn[T]) Done() chan struct{} {
+func (f *FanIn[T]) Done() <-chan struct{} {
 	return f.done
 }
