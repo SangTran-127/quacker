@@ -90,8 +90,30 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 	}, nil
 }
 
+// WithBufferSize sets the buffer capacity for the merged output channel.
+// A size of 0 creates an unbuffered channel (default). Larger values allow
+// producers to continue sending without blocking until the buffer fills.
+//
+// Returns an Option that can be passed to NewFanIn.
+func WithBufferSize(size int) Option {
+	return func(f *FanInConfig) {
+		f.BufferSize = size
+	}
+}
+
+// WithObserver attaches a FanInObserver to receive lifecycle event callbacks.
+// The observer's methods are called synchronously when inputs are added or closed.
+// Pass nil to disable observation (default).
+//
+// Returns an Option that can be passed to NewFanIn.
+func WithObserver(observer FanInObserver) Option {
+	return func(f *FanInConfig) {
+		f.Observer = observer
+	}
+}
+
 // Add registers an input channel to be merged into the fan-in output.
-// It must be called before Run; calling Add after Add will panic if invoked.
+// It must be called before Run; calling Add after Run will panic if invoked.
 //
 // Add is safe for concurrent use from multiple goroutines.
 // The channel will be read until it is closed or the context passed to Run is cancelled.
@@ -119,7 +141,7 @@ func (f *FanIn[T]) Add(ch <-chan T) {
 // are closed or the context is cancelled.
 //
 // Run can only be called once per FanIn instance. Calling Run multiple times
-// will panic. After Run is called, Add will return an error.
+// will panic. After Run is called, Add will panic.
 // To keep simplify & clear ownership => 1 instance = 1 lifecycle = 1 output channel
 //
 // The returned channel should be consumed by the caller. When the context is
@@ -130,7 +152,7 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	}
 
 	f.mu.Lock()
-	// Immutable snapshot the channel slices, prevent data races
+	// Create an immutable snapshot of the input channel slice to prevent data races
 	// Because inputs is shared mutable array
 	inputs := append([]<-chan T(nil), f.inputs...)
 	// Don't store out(chan T) in FanIn struct

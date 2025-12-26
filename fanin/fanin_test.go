@@ -230,10 +230,10 @@ func TestFanIn_AddConcurrency(t *testing.T) {
 
 	fi, _ := NewFanIn[int]()
 	var wg sync.WaitGroup
-	goroutineNums := 10
+	numGoroutines := 10
 
 	channelPerGoroutine := 10
-	for range goroutineNums {
+	for range numGoroutines {
 		wg.Go(func() {
 			inputs := make([]chan int, channelPerGoroutine)
 			for i := range inputs {
@@ -255,9 +255,9 @@ func TestFanIn_AddConcurrency(t *testing.T) {
 
 	<-fi.Done()
 
-	expectedCount := goroutineNums * channelPerGoroutine
+	expectedCount := numGoroutines * channelPerGoroutine
 
-	if count != goroutineNums*channelPerGoroutine {
+	if count != numGoroutines*channelPerGoroutine {
 		t.Errorf("Add() concurrency failed, expect %d, got %d", expectedCount, count)
 	}
 }
