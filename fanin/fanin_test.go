@@ -59,7 +59,7 @@ func TestNewFanIn(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewFanIn[int](WithBufferSize(10), WithObserver(obs))
+			_, err := NewFanIn[int](WithBufferSize(test.cfg.BufferSize), WithObserver(obs))
 
 			if (err != nil) != test.shouldErr {
 				t.Errorf("validation error = %v, want err %v", err, test.shouldErr)
