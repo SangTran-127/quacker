@@ -2,6 +2,7 @@ package fanin
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -222,4 +223,41 @@ func TestFanIn_Observer(t *testing.T) {
 	}
 
 	<-fi.Done()
+}
+
+func TestFanIn_AddConcurrency(t *testing.T) {
+	t.Parallel()
+
+	fi, _ := NewFanIn[int]()
+	var wg sync.WaitGroup
+	goroutineNums := 10
+
+	channelPerGoroutine := 10
+	for range goroutineNums {
+		wg.Go(func() {
+			inputs := make([]chan int, channelPerGoroutine)
+			for i := range inputs {
+				inputs[i] = make(chan int, 1)
+				inputs[i] <- i
+				close(inputs[i])
+				fi.Add(inputs[i])
+
+			}
+		})
+	}
+	wg.Wait()
+
+	count := 0
+	for v := range fi.Run(t.Context()) {
+		count += 1
+		t.Logf("value received %d", v)
+	}
+
+	<-fi.Done()
+
+	expectedCount := goroutineNums * channelPerGoroutine
+
+	if count != goroutineNums*channelPerGoroutine {
+		t.Errorf("Add() concurrency failed, expect %d, got %d", expectedCount, count)
+	}
 }
