@@ -75,9 +75,7 @@ type FanIn[T any] struct {
 //	    fanin.WithObserver(myObserver),
 //	)
 func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
-	cfg := &FanInConfig{
-		BufferSize: 0,
-	}
+	cfg := &FanInConfig{}
 
 	for _, opt := range opts {
 		opt(cfg)
@@ -93,12 +91,12 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 }
 
 // Add registers an input channel to be merged into the fan-in output.
-// It must be called before Run; calling Add after Run returns an error.
+// It must be called before Run; calling Add after Add will panic if invoked.
 //
 // Add is safe for concurrent use from multiple goroutines.
 // The channel will be read until it is closed or the context passed to Run is cancelled.
 //
-// Panic an error if called after Run has been invoked.
+// It panics if called after Run has been invoked.
 func (f *FanIn[T]) Add(ch <-chan T) {
 	if f.running.Load() {
 		panic("fanin: Add() called after Run()")
@@ -122,6 +120,7 @@ func (f *FanIn[T]) Add(ch <-chan T) {
 //
 // Run can only be called once per FanIn instance. Calling Run multiple times
 // will panic. After Run is called, Add will return an error.
+// To keep simplify & clear ownership => 1 instance = 1 lifecycle = 1 output channel
 //
 // The returned channel should be consumed by the caller. When the context is
 // cancelled, all internal goroutines will exit gracefully without leaking.
@@ -134,7 +133,6 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	// Immutable snapshot the channel slices, prevent data races
 	// Because inputs is shared mutable array
 	inputs := append([]<-chan T(nil), f.inputs...)
-	f.mu.Unlock()
 	// Don't store out(chan T) in FanIn struct
 	// Follow these rules:
 	// Whoever creates the channel is the one who closes it.
@@ -142,6 +140,7 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	// We cannot call it again
 	out := make(chan T, f.cfg.BufferSize)
 	f.done = make(chan struct{})
+	f.mu.Unlock()
 	var wg sync.WaitGroup
 	for _, ch := range inputs {
 		wg.Go(func() {
@@ -162,9 +161,11 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 					case out <- v:
 					case <-ctx.Done():
 						return
+
 					}
 				case <-ctx.Done():
 					return
+
 				}
 			}
 
@@ -194,5 +195,7 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 //	<-fanIn.Done()
 //	fmt.Println("all inputs processed")
 func (f *FanIn[T]) Done() <-chan struct{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.done
 }
