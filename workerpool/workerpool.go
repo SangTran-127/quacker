@@ -29,6 +29,7 @@ type WorkerPool[T Task[T]] struct {
 	taskQueue    chan T
 	metrics      *metrics
 	errgroup     *errgroup.Group
+	once         sync.Once
 	ctx          context.Context
 	errHandler   func(workerId int, task T, err error)
 	panicHandler func(workerId int, task T, panicValue any)
@@ -100,16 +101,24 @@ func NewWorkerPool[T Task[T]](ctx context.Context, cfg *WorkerPoolConfig[T]) (*W
 // or the context is cancelled. This method does not block; workers run in the background.
 // Returns nil on successful startup.
 func (w *WorkerPool[T]) Start() error {
-	// TODO: compare when case 10 worker vs 1 task
+
 	for i := 0; i < w.numWorkers; i++ {
 		workerId := i
 		w.errgroup.Go(func() error {
+
+			w.metrics.mu.Lock()
+			w.metrics.ActiveWorkers++
+			w.metrics.mu.Unlock()
+
+			defer func() {
+				w.metrics.mu.Lock()
+				w.metrics.ActiveWorkers--
+				w.metrics.mu.Unlock()
+			}()
+
 			return w.worker(workerId)
 		})
 	}
-	w.metrics.mu.Lock()
-	w.metrics.ActiveWorkers = w.numWorkers
-	w.metrics.mu.Unlock()
 	return nil
 }
 
@@ -125,7 +134,7 @@ func (w *WorkerPool[T]) Push(task T) error {
 	case <-w.ctx.Done():
 		return w.ctx.Err()
 	default:
-		return fmt.Errorf("task queue is full")
+		return fmt.Errorf("worker pool %q: task queue is full (capacity: %d)", w.name, cap(w.taskQueue))
 	}
 }
 
@@ -133,7 +142,10 @@ func (w *WorkerPool[T]) Push(task T) error {
 // This signals all workers to finish processing their current tasks and exit.
 // Call Wait after Stop to block until all workers have completed.
 func (w *WorkerPool[T]) Stop() {
-	close(w.taskQueue)
+	// Prevent calling close 2 times that will panic
+	w.once.Do(func() {
+		close(w.taskQueue)
+	})
 }
 
 // Wait blocks until all worker goroutines have finished processing.
@@ -145,8 +157,8 @@ func (w *WorkerPool[T]) Wait() error {
 }
 
 func (w *WorkerPool[T]) StopAndWait() error {
-	close(w.taskQueue)
-	return w.errgroup.Wait()
+	w.Stop()
+	return w.Wait()
 }
 
 // GetMetrics returns a snapshot of the current pool metrics including task counts
