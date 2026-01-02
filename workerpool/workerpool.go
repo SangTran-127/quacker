@@ -156,6 +156,13 @@ func (w *WorkerPool[T]) Wait() error {
 	return w.errgroup.Wait()
 }
 
+// StopAndWait is a convenience method that combines Stop and Wait.
+// It closes the task queue and blocks until all workers have finished
+// processing their current tasks. This is equivalent to calling Stop()
+// followed by Wait().
+//
+// Returns an error if any worker encountered an error during execution
+// or if the context was cancelled.
 func (w *WorkerPool[T]) StopAndWait() error {
 	w.Stop()
 	return w.Wait()

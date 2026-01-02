@@ -376,3 +376,4 @@ func TestWorkerPool_TaskCancellation(t *testing.T) {
 		t.Error("task canncellation test timeout error")
 	}
 }
+
