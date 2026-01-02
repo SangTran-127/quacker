@@ -10,6 +10,12 @@
 //   - Spawning consumer goroutines for each output channel
 //   - Managing their own WaitGroup to track consumer completion
 //
+// Error Handling:
+//   - FanOut follows a fail-fast philosophy with no panic recovery
+//   - Run() panics if called multiple times (programmer error)
+//   - Any panic in the dispatcher goroutine will crash the program
+//   - This ensures correct behavior and prevents silent corruption
+//
 // Example:
 //
 //	fo.Run(ctx, input)
@@ -93,6 +99,9 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 	}, nil
 }
 
+// Run starts the dispatcher goroutine that distributes values from input to output channels.
+// It panics if called multiple times on the same FanOut instance (programmer error).
+// No panic recovery is performed - any panic will crash the program to ensure fail-fast behavior.
 func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
 	if !f.running.CompareAndSwap(false, true) {
 		panic("fanout: Run() called multiple times")
