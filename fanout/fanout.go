@@ -157,7 +157,7 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 	}
 
 	if cfg.WorkerSize < 1 {
-		return nil, fmt.Errorf("fanout: number of workers must greater than 0")
+		return nil, fmt.Errorf("fanout: number of workers must be greater than 0")
 	}
 
 	if cfg.BufferSize < 0 {
