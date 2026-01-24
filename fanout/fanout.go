@@ -140,7 +140,7 @@ type FanOut[T any] struct {
 // distribution strategy, and attach an observer:
 //
 //	fo, err := fanout.NewFanOut[string](
-//	    fanout.WithWorkers(4),
+//	    fanout.WithWorkerSize(4),
 //	    fanout.WithBufferSize(100),
 //	    fanout.WithStrategy(fanout.RoundRobin),
 //	    fanout.WithObserver(myObserver),
@@ -149,6 +149,7 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 	cfg := &FanOutConfig{
 		WorkerSize: 1,
 		BufferSize: 0,
+		Observer:   nil,
 		Strategy:   RoundRobin,
 	}
 
@@ -228,7 +229,6 @@ func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
 			}
 		}
 	}()
-
 }
 
 // Outputs returns the output channels that receive distributed values.
@@ -259,7 +259,6 @@ func (f *FanOut[T]) Outputs() []<-chan T {
 	})
 
 	return f.cachedOutputs
-
 }
 
 // roundRobin distributes a value to the next output channel in rotation.
@@ -315,12 +314,12 @@ func (f *FanOut[T]) closeAllOutput() {
 	}
 }
 
-// WithWorkers sets the number of output channels (workers) for the fan-out.
+// WithWorkerSize() sets the number of output channels (workers) for the fan-out.
 // Each output channel can be consumed by a separate goroutine for parallel processing.
 // Must be at least 1. Default is 1.
 //
 // Returns an Option that can be passed to NewFanOut.
-func WithWorkers(n int) Option {
+func WithWorkerSize(n int) Option {
 	return func(cfg *FanOutConfig) {
 		cfg.WorkerSize = n
 	}
