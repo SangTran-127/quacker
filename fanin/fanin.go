@@ -158,8 +158,8 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	// Don't store out(chan T) in FanIn struct
 	// Follow these rules:
 	// Whoever creates the channel is the one who closes it.
-	// If store in struct, we can't Run(ctx) again because once it close
-	// We cannot call it again
+	// If stored in the struct, Run(ctx) cannot be invoked repeatedly because
+	// once the channel is closed, it cannot be reopened or reused.
 	out := make(chan T, f.cfg.BufferSize)
 	f.done = make(chan struct{})
 	f.mu.Unlock()

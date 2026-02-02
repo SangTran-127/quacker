@@ -44,7 +44,7 @@ go get github.com/SangTran-127/quacker
 
 > **Coming Soon**
 > 
-> We are rigorously testing Quacker against standard library implementations and other popular concurrency libraries (e.g., `ants`, `conc`). Preliminary results show minimal overhead with significant usability gains.
+> Benchmarks against standard library implementations are currently being developed. Preliminary results show minimal overhead with significant usability gains.
 
 ---
 <p align="center">
