@@ -250,7 +250,7 @@ func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
 //	}
 func (f *FanOut[T]) Outputs() []<-chan T {
 	f.once.Do(func() {
-		// Return a received only reference prev
+		// Return receive-only channel references to prevent consumers from closing or sending to these channels.
 		f.cachedOutputs = make([]<-chan T, len(f.outputs))
 
 		for i, ch := range f.outputs {
