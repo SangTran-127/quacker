@@ -41,23 +41,23 @@ func TestFanOut_NewFanOut(t *testing.T) {
 		{
 			name: "worker size is invalid should yeild error",
 			cfg: &FanOutConfig{
-				WorkerSize: -10,
+				WorkerCount: -10,
 			},
 			shouldErr: true,
 		},
 		{
 			name: "buffer size is invalid should yeild error",
 			cfg: &FanOutConfig{
-				BufferSize: -10,
-				WorkerSize: 1,
+				BufferSize:  -10,
+				WorkerCount: 1,
 			},
 			shouldErr: true,
 		},
 		{
 			name: "valid all field should work",
 			cfg: &FanOutConfig{
-				BufferSize: 1,
-				WorkerSize: 1,
+				BufferSize:  1,
+				WorkerCount: 1,
 			},
 			shouldErr: false,
 		},
@@ -70,7 +70,7 @@ func TestFanOut_NewFanOut(t *testing.T) {
 			_, err := NewFanOut[int](
 				WithBufferSize(test.cfg.BufferSize),
 				WithObserver(test.cfg.Observer),
-				WithWorkerSize(test.cfg.WorkerSize),
+				WithWorkerCount(test.cfg.WorkerCount),
 				WithStrategy(test.cfg.Strategy),
 			)
 			if (err != nil) != test.shouldErr {
@@ -83,15 +83,15 @@ func TestFanOut_NewFanOut(t *testing.T) {
 func TestFanOut_RunBroadCast(t *testing.T) {
 	t.Parallel()
 	var wg sync.WaitGroup
-	workerSize := 2
+	workerCount := 2
 	size := 10
 	obs := &mockObserver{
 		name: "fo broadcast",
 		t:    t,
 	}
 	fo, _ := NewFanOut[int](func(foc *FanOutConfig) {
-		foc.WorkerSize = workerSize
-		foc.Strategy = BroadCast
+		foc.WorkerCount = workerCount
+		foc.Strategy = Broadcast
 		foc.Observer = obs
 	})
 
@@ -106,7 +106,7 @@ func TestFanOut_RunBroadCast(t *testing.T) {
 
 	fo.Run(t.Context(), ch)
 
-	res := make([]int, workerSize)
+	res := make([]int, workerCount)
 
 	for i, cha := range fo.Outputs() {
 		wg.Go(func() {
@@ -134,13 +134,13 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 	t.Parallel()
 	var wg sync.WaitGroup
 	size := 10
-	workerSize := 2
+	workerCount := 2
 	obs := &mockObserver{
 		name: "fo round robin",
 		t:    t,
 	}
 	fo, _ := NewFanOut[int](func(foc *FanOutConfig) {
-		foc.WorkerSize = workerSize
+		foc.WorkerCount = workerCount
 		foc.Strategy = RoundRobin
 		foc.Observer = obs
 	})
@@ -154,7 +154,7 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 	})
 
 	fo.Run(t.Context(), ch)
-	res := make([]int, workerSize)
+	res := make([]int, workerCount)
 	for i, cha := range fo.Outputs() {
 		wg.Go(func() {
 			count := 0
@@ -167,7 +167,7 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 	}
 
 	wg.Wait()
-	expected := size / workerSize
+	expected := size / workerCount
 
 	for i, count := range res {
 		if count != expected {
@@ -178,7 +178,7 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 
 func TestFanOut_ContextTimeOut(t *testing.T) {
 	t.Parallel()
-	fo, _ := NewFanOut[int](WithWorkerSize(2))
+	fo, _ := NewFanOut[int](WithWorkerCount(2))
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 
 	defer cancel()
@@ -228,7 +228,7 @@ func TestFanIn_ContextCancel(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 
-	fo, err := NewFanOut[int](WithWorkerSize(3))
+	fo, err := NewFanOut[int](WithWorkerCount(3))
 	if err != nil {
 		t.Fatalf("fo: context cancel new fanout error %s", err)
 	}
@@ -277,7 +277,7 @@ func TestFanOut_ContextDoneRoundRobin(t *testing.T) {
 
 	// BufferSize 0 to force blocking on send
 	fo, err := NewFanOut[int](
-		WithWorkerSize(3),
+		WithWorkerCount(3),
 		WithBufferSize(0),
 		WithStrategy(RoundRobin),
 	)
@@ -318,8 +318,8 @@ func TestFanOut_ContextDoneBroadcast(t *testing.T) {
 
 	// BufferSize 0 to force blocking on send
 	fo, err := NewFanOut[int](
-		WithWorkerSize(3),
-		WithStrategy(BroadCast),
+		WithWorkerCount(3),
+		WithStrategy(Broadcast),
 		WithBufferSize(0),
 	)
 	if err != nil {
@@ -357,15 +357,9 @@ func TestFanOut_RunMultipleTime(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("fo err: it should panic error when calling multiple Run")
-		}
-	}()
-
 	// BufferSize 0 to force blocking on send
 	fo, err := NewFanOut[int](
-		WithWorkerSize(3),
+		WithWorkerCount(3),
 		WithBufferSize(0),
 	)
 	if err != nil {
@@ -374,6 +368,12 @@ func TestFanOut_RunMultipleTime(t *testing.T) {
 
 	input := make(chan int, 10)
 	fo.Run(ctx, input)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("fo err: it should panic error when calling multiple Run")
+		}
+	}()
 
 	fo.Run(ctx, input)
 }

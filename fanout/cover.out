@@ -1,8 +1,8 @@
 mode: atomic
 github.com/SangTran-127/quacker/fanout/fanout.go:148.59,156.27 2 10
 github.com/SangTran-127/quacker/fanout/fanout.go:156.27,158.3 1 24
-github.com/SangTran-127/quacker/fanout/fanout.go:160.2,160.24 1 10
-github.com/SangTran-127/quacker/fanout/fanout.go:160.24,162.3 1 1
+github.com/SangTran-127/quacker/fanout/fanout.go:160.2,160.25 1 10
+github.com/SangTran-127/quacker/fanout/fanout.go:160.25,162.3 1 1
 github.com/SangTran-127/quacker/fanout/fanout.go:164.2,164.24 1 9
 github.com/SangTran-127/quacker/fanout/fanout.go:164.24,166.3 1 1
 github.com/SangTran-127/quacker/fanout/fanout.go:168.2,170.25 2 8
@@ -38,7 +38,7 @@ github.com/SangTran-127/quacker/fanout/fanout.go:307.38,308.31 1 7
 github.com/SangTran-127/quacker/fanout/fanout.go:308.31,310.3 1 18
 github.com/SangTran-127/quacker/fanout/fanout.go:312.2,312.27 1 7
 github.com/SangTran-127/quacker/fanout/fanout.go:312.27,314.3 1 2
-github.com/SangTran-127/quacker/fanout/fanout.go:322.35,323.33 1 8
+github.com/SangTran-127/quacker/fanout/fanout.go:322.36,323.33 1 8
 github.com/SangTran-127/quacker/fanout/fanout.go:323.33,325.3 1 8
 github.com/SangTran-127/quacker/fanout/fanout.go:334.38,335.33 1 6
 github.com/SangTran-127/quacker/fanout/fanout.go:335.33,337.3 1 6

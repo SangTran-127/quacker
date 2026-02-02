@@ -89,17 +89,17 @@ const (
 	// Each value is sent to exactly one output channel, cycling through workers sequentially.
 	// Use this strategy for load balancing work across multiple consumers.
 	RoundRobin FanOutStrategy = iota
-	// BroadCast sends each value to ALL output channels simultaneously.
+	// Broadcast sends each value to ALL output channels simultaneously.
 	// Every consumer receives every value from the input stream.
 	// Use this strategy for event broadcasting or pub/sub patterns.
-	BroadCast
+	Broadcast
 )
 
 // FanOutConfig holds configuration options for creating a FanOut instance.
 type FanOutConfig struct {
-	// WorkerSize specifies the number of output channels to create.
+	// WorkerCount specifies the number of output channels to create.
 	// Must be at least 1. Default is 1.
-	WorkerSize int
+	WorkerCount int
 	// BufferSize specifies the capacity of each output channel buffer.
 	// A value of 0 creates unbuffered channels. Must be non-negative. Default is 0.
 	BufferSize int
@@ -133,31 +133,31 @@ type FanOut[T any] struct {
 }
 
 // NewFanOut creates a new FanOut instance with the provided options.
-// It returns an error if the configuration is invalid (e.g., WorkerSize < 1
+// It returns an error if the configuration is invalid (e.g., WorkerCount < 1
 // or BufferSize < 0).
 //
 // Options can be used to configure the number of workers, buffer size,
 // distribution strategy, and attach an observer:
 //
 //	fo, err := fanout.NewFanOut[string](
-//	    fanout.WithWorkerSize(4),
+//	    fanout.WithWorkerCount(4),
 //	    fanout.WithBufferSize(100),
 //	    fanout.WithStrategy(fanout.RoundRobin),
 //	    fanout.WithObserver(myObserver),
 //	)
 func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 	cfg := &FanOutConfig{
-		WorkerSize: 1,
-		BufferSize: 0,
-		Observer:   nil,
-		Strategy:   RoundRobin,
+		WorkerCount: 1,
+		BufferSize:  0,
+		Observer:    nil,
+		Strategy:    RoundRobin,
 	}
 
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	if cfg.WorkerSize < 1 {
+	if cfg.WorkerCount < 1 {
 		return nil, fmt.Errorf("fanout: number of workers must be greater than 0")
 	}
 
@@ -165,7 +165,7 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 		return nil, fmt.Errorf("fanout: buffer size must not be a negative integer")
 	}
 
-	outputs := make([]chan T, cfg.WorkerSize)
+	outputs := make([]chan T, cfg.WorkerCount)
 
 	for i := range outputs {
 		outputs[i] = make(chan T, cfg.BufferSize)
@@ -179,7 +179,7 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 
 // Run starts the fan-out distribution from the input channel to all output channels.
 // It spawns a single dispatcher goroutine that reads from the input and distributes
-// values according to the configured strategy (RoundRobin or BroadCast).
+// values according to the configured strategy (RoundRobin or Broadcast).
 //
 // Run returns immediately after starting the dispatcher goroutine. The dispatcher
 // continues running until either:
@@ -220,7 +220,7 @@ func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
 				case RoundRobin:
 					f.roundRobin(ctx, value, &idx)
 
-				case BroadCast:
+				case Broadcast:
 					f.broadcast(ctx, value)
 				}
 
@@ -235,7 +235,7 @@ func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
 // The returned slice contains receive-only channel references, preventing
 // consumers from accidentally closing or sending to these channels.
 //
-// The number of channels equals the WorkerSize configured during creation.
+// The number of channels equals the WorkerCount configured during creation.
 // This method is safe to call concurrently and will always return the same
 // slice of channels.
 //
@@ -265,10 +265,10 @@ func (f *FanOut[T]) Outputs() []<-chan T {
 // It cycles through outputs sequentially, ensuring even distribution of work.
 // The operation respects context cancellation for graceful shutdown.
 func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) {
-	target := *index % f.cfg.WorkerSize
+	target := *index % f.cfg.WorkerCount
 	select {
 	case f.outputs[target] <- value:
-		*index = (*index + 1) % f.cfg.WorkerSize
+		*index = (*index + 1) % f.cfg.WorkerCount
 		if f.cfg.Observer != nil {
 			f.cfg.Observer.OnDistribute()
 		}
@@ -314,14 +314,14 @@ func (f *FanOut[T]) closeAllOutput() {
 	}
 }
 
-// WithWorkerSize() sets the number of output channels (workers) for the fan-out.
+// WithWorkerCount sets the number of output channels (workers) for the fan-out.
 // Each output channel can be consumed by a separate goroutine for parallel processing.
 // Must be at least 1. Default is 1.
 //
 // Returns an Option that can be passed to NewFanOut.
-func WithWorkerSize(n int) Option {
+func WithWorkerCount(n int) Option {
 	return func(cfg *FanOutConfig) {
-		cfg.WorkerSize = n
+		cfg.WorkerCount = n
 	}
 }
 
