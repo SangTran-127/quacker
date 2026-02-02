@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Tran Quang Sang
+// SPDX-License-Identifier: MIT
+
 package fanin
 
 import (

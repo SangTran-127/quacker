@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Tran Quang Sang
+// SPDX-License-Identifier: MIT
+
 package workerpool
 
 import (
@@ -374,5 +377,95 @@ func TestWorkerPool_TaskCancellation(t *testing.T) {
 	case <-ctx.Done():
 	case <-time.After(5 * time.Second):
 		t.Error("task canncellation test timeout error")
+	}
+}
+
+func TestWorkerPool_MultipleStop(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	pool, err := NewWorkerPool(ctx, &WorkerPoolConfig[*mockTask]{
+		Name:       "multiple_stop",
+		NumWorkers: 2,
+		TaskSize:   10,
+	})
+
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	if err := pool.Start(); err != nil {
+		t.Fatalf("failed to start pool: %v", err)
+	}
+
+	// First stop should work
+	pool.Stop()
+
+	// Second stop should not panic
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Stop() panicked on second call: %v", r)
+			}
+		}()
+		pool.Stop()
+	}()
+
+	// Wait should still work
+	if err := pool.Wait(); err != nil {
+		// Wait might return error from context cancellation/tasks, which is fine,
+		// Just want to ensure it doesn't block forever or panic
+		t.Logf("Wait returned: %v", err)
+	}
+}
+
+func TestWorkerPool_MetricsRaceCondition(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	// High number of workers to increase race likelihood
+	numWorkers := 50
+	pool, err := NewWorkerPool(ctx, &WorkerPoolConfig[*mockTask]{
+		Name:       "metrics_race",
+		NumWorkers: numWorkers,
+		TaskSize:   10,
+	})
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	// Start reading metrics concurrently BEFORE starting the pool
+	// This catches races during the startup phase
+	var wg sync.WaitGroup
+	startSignal := make(chan struct{})
+
+	for range 10 {
+		wg.Go(func() {
+			<-startSignal
+			for range 100 {
+				m := pool.GetMetrics()
+				// Active workers should never exceed configured count
+				if m.ActiveWorkers > numWorkers {
+					t.Errorf("active workers %d > numWorkers %d", m.ActiveWorkers, numWorkers)
+				}
+			}
+		})
+	}
+
+	// Start the pool while readers are ready
+	close(startSignal)
+	if err := pool.Start(); err != nil {
+		t.Fatalf("failed to start pool: %v", err)
+	}
+
+	// Continue hammering metrics while workers start up
+	wg.Wait()
+
+	pool.StopAndWait()
+
+	// Verify cleanup
+	metrics := pool.GetMetrics()
+	if metrics.ActiveWorkers != 0 {
+		t.Errorf("expected 0 active workers after stop, got %d", metrics.ActiveWorkers)
 	}
 }
