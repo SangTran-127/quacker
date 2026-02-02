@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/7af9dc11-083c-4036-aae6-4f71331abe1d" width="400" alt="Quacker">
-</p>
+![Quacker](https://github.com/user-attachments/assets/7af9dc11-083c-4036-aae6-4f71331abe1d)
 
 <h1 align="center">Quacker</h1>
 
@@ -48,5 +46,5 @@ go get github.com/SangTran-127/quacker
 
 ---
 <p align="center">
-  Built with ❤️ in <a href="https://go.dev/">Go</a>
+  Built with ❤️ in Go
 </p>
