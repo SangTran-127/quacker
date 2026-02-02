@@ -2,7 +2,6 @@ package fanout
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -36,14 +35,14 @@ func TestFanOut_NewFanOut(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name: "worker size is invalid should yeild error",
+			name: "worker size is invalid should yield error",
 			cfg: &FanOutConfig{
 				WorkerCount: -10,
 			},
 			shouldErr: true,
 		},
 		{
-			name: "buffer size is invalid should yeild error",
+			name: "buffer size is invalid should yield error",
 			cfg: &FanOutConfig{
 				BufferSize:  -10,
 				WorkerCount: 1,
@@ -194,7 +193,7 @@ func TestFanOut_RunBroadCast(t *testing.T) {
 		wg.Go(func() {
 			count := 0
 			for v := range cha {
-				fmt.Println(v)
+				t.Logf("%v", v)
 				count++
 				res[i] = count
 			}
@@ -241,7 +240,7 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 		wg.Go(func() {
 			count := 0
 			for v := range cha {
-				fmt.Println(v)
+				t.Logf("%v", v)
 				count++
 				res[i] = count
 			}
