@@ -10,9 +10,6 @@ import (
 	"go.uber.org/goleak"
 )
 
-// TODO: Should check concurrent task that can be race condition
-// Make sure it not race condition and thread-safe
-
 type mockObserver struct {
 	name string
 	t    *testing.T
@@ -61,7 +58,22 @@ func TestFanOut_NewFanOut(t *testing.T) {
 			},
 			shouldErr: false,
 		},
-		// TODO: More case
+		{
+			name: "worker count is zero should yield error",
+			cfg: &FanOutConfig{
+				WorkerCount: 0,
+			},
+			shouldErr: true,
+		},
+		{
+			name: "valid broadcast strategy should work",
+			cfg: &FanOutConfig{
+				WorkerCount: 5,
+				BufferSize:  10,
+				Strategy:    Broadcast,
+			},
+			shouldErr: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -78,6 +90,76 @@ func TestFanOut_NewFanOut(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFanOut_ConcurrentStress(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	workerCount := 5
+	fo, err := NewFanOut[int](
+		WithWorkerCount(workerCount),
+		WithBufferSize(100),
+	)
+	if err != nil {
+		t.Fatalf("new fanout error: %v", err)
+	}
+
+	input := make(chan int, 1000)
+	fo.Run(ctx, input)
+
+	var wg sync.WaitGroup
+
+	// 1. Concurrent access to Outputs()
+	// Outputs() uses sync.Once so it should be safe
+	for i := 0; i < 10; i++ {
+		wg.Go(func() {
+			outs := fo.Outputs()
+			if len(outs) != workerCount {
+				t.Errorf("expected %d outputs, got %d", workerCount, len(outs))
+			}
+		})
+	}
+
+	// 2. Concurrent consumers
+	// Just consume data to prevent blocking
+	for _, ch := range fo.Outputs() {
+		wg.Go(func() {
+			for range ch {
+				// consume
+			}
+		})
+	}
+
+	// 3. Concurrent producers
+	producers := 10
+	messagesPerProducer := 100
+
+	var producerWg sync.WaitGroup
+	producerWg.Add(producers)
+
+	for i := 0; i < producers; i++ {
+		go func() {
+			defer producerWg.Done()
+			for j := 0; j < messagesPerProducer; j++ {
+				select {
+				case input <- j:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	// Closer goroutine
+	go func() {
+		producerWg.Wait()
+		close(input)
+	}()
+
+	// Wait for all consumers and checkers
+	wg.Wait()
 }
 
 func TestFanOut_RunBroadCast(t *testing.T) {
