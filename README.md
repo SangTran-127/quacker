@@ -48,5 +48,5 @@ go get github.com/SangTran-127/quacker
 
 ---
 <p align="center">
-  Built with ❤️ in <a href="https://go.dev/">Go</a> by <a href="https://github.com/SangTran-127">Sang Tran</a>
+  Built with ❤️ in <a href="https://go.dev/">Go</a>
 </p>

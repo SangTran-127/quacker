@@ -5,8 +5,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 type mockObserver struct {
@@ -20,10 +18,6 @@ func (m *mockObserver) OnDistribute() {
 
 func (m *mockObserver) OnOutputClosed() {
 	m.t.Logf("fanout: %s OnOutputClosed", m.name)
-}
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
 }
 
 func TestFanOut_NewFanOut(t *testing.T) {

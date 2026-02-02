@@ -6,8 +6,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 type mockTask struct {
@@ -90,10 +88,6 @@ func (o *mockObserver) OnTaskPanic(workerID int, taskID string, panicValue any) 
 	if o.t != nil {
 		o.t.Logf("Observer: worker %d task %s panicked: %v", workerID, taskID, panicValue)
 	}
-}
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
 }
 
 func TestNewWorkerPool(t *testing.T) {

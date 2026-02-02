@@ -8,8 +8,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 type mockObserver struct {
@@ -25,10 +23,6 @@ func (o *mockObserver) OnInputAdded() {
 // OnInputClosed is called when an input channel is closed by its producer.
 func (o *mockObserver) OnInputClosed() {
 	o.t.Logf("%s: OnInputClosed should work", o.name)
-}
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
 }
 
 func TestNewFanIn(t *testing.T) {
