@@ -34,7 +34,7 @@
 // Basic round-robin distribution:
 //
 //	fo, _ := fanout.NewFanOut[int](
-//	    fanout.WithWorkers(3),
+//	    fanout.WithWorkerCount(3),
 //	    fanout.WithBufferSize(10),
 //	)
 //	fo.Run(ctx, input)
@@ -55,7 +55,7 @@
 // Broadcast to all consumers:
 //
 //	fo, _ := fanout.NewFanOut[Event](
-//	    fanout.WithWorkers(5),
+//	    fanout.WithWorkerCount(5),
 //	    fanout.WithStrategy(fanout.BroadCast),
 //	)
 //	fo.Run(ctx, eventStream)

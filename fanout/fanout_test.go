@@ -306,7 +306,7 @@ func TestFanOut_ContextTimeOut(t *testing.T) {
 	}
 }
 
-func TestFanIn_ContextCancel(t *testing.T) {
+func TestFanOut_ContextCancel(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 
