@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/SangTran-127/quacker/fanout/fanout.go (92.9%)</option>
+				<option value="file0">github.com/SangTran-127/quacker/fanout/fanout.go (98.2%)</option>
 				
 				</select>
 			</div>
@@ -225,7 +225,7 @@ type FanOut[T any] struct {
 //            fanout.WithStrategy(fanout.RoundRobin),
 //            fanout.WithObserver(myObserver),
 //        )
-func NewFanOut[T any](opts ...Option) (*FanOut[T], error) <span class="cov4" title="7">{
+func NewFanOut[T any](opts ...Option) (*FanOut[T], error) <span class="cov5" title="9">{
         cfg := &amp;FanOutConfig{
                 WorkerSize: 1,
                 BufferSize: 0,
@@ -233,25 +233,25 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) <span class="cov4" tit
                 Strategy:   RoundRobin,
         }
 
-        for _, opt := range opts </span><span class="cov6" title="16">{
+        for _, opt := range opts </span><span class="cov7" title="22">{
                 opt(cfg)
         }</span>
 
-        <span class="cov4" title="7">if cfg.WorkerSize &lt; 1 </span><span class="cov2" title="2">{
+        <span class="cov5" title="9">if cfg.WorkerSize &lt; 1 </span><span class="cov1" title="1">{
                 return nil, fmt.Errorf("fanout: number of workers must be greater than 0")
         }</span>
 
-        <span class="cov4" title="5">if cfg.BufferSize &lt; 0 </span><span class="cov0" title="0">{
+        <span class="cov5" title="8">if cfg.BufferSize &lt; 0 </span><span class="cov1" title="1">{
                 return nil, fmt.Errorf("fanout: buffer size must not be a negative integer")
         }</span>
 
-        <span class="cov4" title="5">outputs := make([]chan T, cfg.WorkerSize)
+        <span class="cov5" title="7">outputs := make([]chan T, cfg.WorkerSize)
 
-        for i := range outputs </span><span class="cov7" title="26">{
+        for i := range outputs </span><span class="cov6" title="16">{
                 outputs[i] = make(chan T, cfg.BufferSize)
         }</span>
 
-        <span class="cov4" title="5">return &amp;FanOut[T]{
+        <span class="cov5" title="7">return &amp;FanOut[T]{
                 cfg:     cfg,
                 outputs: outputs,
         }, nil</span>
@@ -281,30 +281,30 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) <span class="cov4" tit
 //            close(input)
 //        }()
 //        fo.Run(ctx, input)
-func (f *FanOut[T]) Run(ctx context.Context, input &lt;-chan T) <span class="cov3" title="4">{
+func (f *FanOut[T]) Run(ctx context.Context, input &lt;-chan T) <span class="cov4" title="6">{
         if !f.running.CompareAndSwap(false, true) </span><span class="cov0" title="0">{
                 panic("fanout: Run() called multiple times")</span>
         }
 
-        <span class="cov3" title="4">go func() </span><span class="cov3" title="4">{
+        <span class="cov4" title="6">go func() </span><span class="cov4" title="6">{
                 idx := 0
                 defer f.running.Store(false)
                 defer f.closeAllOutput()
-                for </span><span class="cov9" title="69">{
+                for </span><span class="cov10" title="73">{
                         select </span>{
-                        case value, ok := &lt;-input:<span class="cov9" title="67">
+                        case value, ok := &lt;-input:<span class="cov9" title="69">
                                 if !ok </span><span class="cov2" title="2">{
                                         return
                                 }</span>
-                                <span class="cov9" title="65">switch f.cfg.Strategy </span>{
-                                case RoundRobin:<span class="cov8" title="55">
+                                <span class="cov9" title="67">switch f.cfg.Strategy </span>{
+                                case RoundRobin:<span class="cov9" title="56">
                                         f.roundRobin(ctx, value, &amp;idx)</span>
 
-                                case BroadCast:<span class="cov5" title="10">
+                                case BroadCast:<span class="cov6" title="11">
                                         f.broadcast(ctx, value)</span>
                                 }
 
-                        case &lt;-ctx.Done():<span class="cov2" title="2">
+                        case &lt;-ctx.Done():<span class="cov3" title="4">
                                 return</span>
                         }
                 }
@@ -328,31 +328,31 @@ func (f *FanOut[T]) Run(ctx context.Context, input &lt;-chan T) <span class="cov
 //                }
 //            }(i, ch)
 //        }
-func (f *FanOut[T]) Outputs() []&lt;-chan T <span class="cov3" title="4">{
-        f.once.Do(func() </span><span class="cov3" title="4">{
+func (f *FanOut[T]) Outputs() []&lt;-chan T <span class="cov4" title="6">{
+        f.once.Do(func() </span><span class="cov4" title="6">{
                 // Return a received only reference prev
                 f.cachedOutputs = make([]&lt;-chan T, len(f.outputs))
 
-                for i, ch := range f.outputs </span><span class="cov7" title="25">{
+                for i, ch := range f.outputs </span><span class="cov6" title="15">{
                         f.cachedOutputs[i] = ch
                 }</span>
         })
 
-        <span class="cov3" title="4">return f.cachedOutputs</span>
+        <span class="cov4" title="6">return f.cachedOutputs</span>
 }
 
 // roundRobin distributes a value to the next output channel in rotation.
 // It cycles through outputs sequentially, ensuring even distribution of work.
 // The operation respects context cancellation for graceful shutdown.
-func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) <span class="cov8" title="55">{
+func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) <span class="cov9" title="56">{
         target := *index % f.cfg.WorkerSize
         select </span>{
-        case f.outputs[target] &lt;- value:<span class="cov8" title="55">
+        case f.outputs[target] &lt;- value:<span class="cov9" title="55">
                 *index = (*index + 1) % f.cfg.WorkerSize
                 if f.cfg.Observer != nil </span><span class="cov5" title="10">{
                         f.cfg.Observer.OnDistribute()
                 }</span>
-        case &lt;-ctx.Done():<span class="cov0" title="0">
+        case &lt;-ctx.Done():<span class="cov1" title="1">
                 return</span>
         }
 }
@@ -362,34 +362,34 @@ func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) <span c
 // blocking delivery to other outputs. The method waits for all sends
 // to complete before returning.
 // The operation respects context cancellation for graceful shutdown.
-func (f *FanOut[T]) broadcast(ctx context.Context, value T) <span class="cov5" title="10">{
+func (f *FanOut[T]) broadcast(ctx context.Context, value T) <span class="cov6" title="11">{
         var wg sync.WaitGroup
-        for _, ch := range f.outputs </span><span class="cov10" title="100">{
+        for _, ch := range f.outputs </span><span class="cov7" title="23">{
                 // Create goroutine to prevent bottleneck if any consumer is slow
-                wg.Go(func() </span><span class="cov10" title="100">{
+                wg.Go(func() </span><span class="cov7" title="23">{
                         select </span>{
-                        case ch &lt;- value:<span class="cov10" title="100">
-                                if f.cfg.Observer != nil </span><span class="cov10" title="100">{
+                        case ch &lt;- value:<span class="cov7" title="20">
+                                if f.cfg.Observer != nil </span><span class="cov7" title="20">{
                                         f.cfg.Observer.OnDistribute()
                                 }</span>
-                        case &lt;-ctx.Done():<span class="cov0" title="0">
+                        case &lt;-ctx.Done():<span class="cov3" title="3">
                                 return</span>
                         }
                 })
         }
 
-        <span class="cov5" title="10">wg.Wait()</span>
+        <span class="cov6" title="11">wg.Wait()</span>
 }
 
 // closeAllOutput closes all output channels and notifies the observer.
 // This is called when the dispatcher goroutine exits, signaling to consumers
 // that no more values will be sent.
-func (f *FanOut[T]) closeAllOutput() <span class="cov3" title="4">{
-        for _, ch := range f.outputs </span><span class="cov7" title="25">{
+func (f *FanOut[T]) closeAllOutput() <span class="cov4" title="6">{
+        for _, ch := range f.outputs </span><span class="cov6" title="15">{
                 close(ch)
         }</span>
 
-        <span class="cov3" title="4">if f.cfg.Observer != nil </span><span class="cov2" title="2">{
+        <span class="cov4" title="6">if f.cfg.Observer != nil </span><span class="cov2" title="2">{
                 f.cfg.Observer.OnOutputClosed()
         }</span>
 }
@@ -399,8 +399,8 @@ func (f *FanOut[T]) closeAllOutput() <span class="cov3" title="4">{
 // Must be at least 1. Default is 1.
 //
 // Returns an Option that can be passed to NewFanOut.
-func WithWorkerSize(n int) Option <span class="cov4" title="5">{
-        return func(cfg *FanOutConfig) </span><span class="cov4" title="5">{
+func WithWorkerSize(n int) Option <span class="cov5" title="7">{
+        return func(cfg *FanOutConfig) </span><span class="cov5" title="7">{
                 cfg.WorkerSize = n
         }</span>
 }
@@ -411,8 +411,8 @@ func WithWorkerSize(n int) Option <span class="cov4" title="5">{
 // which can improve throughput when consumers have variable processing times.
 //
 // Returns an Option that can be passed to NewFanOut.
-func WithBufferSize(size int) Option <span class="cov3" title="3">{
-        return func(cfg *FanOutConfig) </span><span class="cov3" title="3">{
+func WithBufferSize(size int) Option <span class="cov4" title="5">{
+        return func(cfg *FanOutConfig) </span><span class="cov4" title="5">{
                 cfg.BufferSize = size
         }</span>
 }
@@ -423,8 +423,8 @@ func WithBufferSize(size int) Option <span class="cov3" title="3">{
 //   - BroadCast: Each value goes to ALL outputs
 //
 // Returns an Option that can be passed to NewFanOut.
-func WithStrategy(strategy FanOutStrategy) Option <span class="cov3" title="3">{
-        return func(cfg *FanOutConfig) </span><span class="cov3" title="3">{
+func WithStrategy(strategy FanOutStrategy) Option <span class="cov4" title="5">{
+        return func(cfg *FanOutConfig) </span><span class="cov4" title="5">{
                 cfg.Strategy = strategy
         }</span>
 }

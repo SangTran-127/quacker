@@ -49,6 +49,7 @@ func TestFanOut_NewFanOut(t *testing.T) {
 			name: "buffer size is invalid should yeild error",
 			cfg: &FanOutConfig{
 				BufferSize: -10,
+				WorkerSize: 1,
 			},
 			shouldErr: true,
 		},
@@ -120,7 +121,7 @@ func TestFanOut_RunBroadCast(t *testing.T) {
 
 	wg.Wait()
 
-	expected := size / workerSize
+	expected := size
 
 	for i, count := range res {
 		if count != expected {
@@ -175,7 +176,7 @@ func TestFanOut_RunRoundRobin(t *testing.T) {
 	}
 }
 
-func TestFanIn_ContextTimeOut(t *testing.T) {
+func TestFanOut_ContextTimeOut(t *testing.T) {
 	t.Parallel()
 	fo, _ := NewFanOut[int](WithWorkerSize(2))
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
@@ -268,4 +269,111 @@ func TestFanIn_ContextCancel(t *testing.T) {
 	if receivedCount > 10 {
 		t.Fatal("fo error")
 	}
+}
+
+func TestFanOut_ContextDoneRoundRobin(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+
+	// BufferSize 0 to force blocking on send
+	fo, err := NewFanOut[int](
+		WithWorkerSize(3),
+		WithBufferSize(0),
+		WithStrategy(RoundRobin),
+	)
+	if err != nil {
+		t.Fatalf("new fanout error: %v", err)
+	}
+
+	input := make(chan int)
+	fo.Run(ctx, input)
+
+	// Send one value to block the dispatcher in 'roundRobin'
+	// It will try to send to an output, but no one is reading.
+	go func() {
+		input <- 1
+	}()
+
+	// Wait a bit to ensure we are stuck in the send case
+	time.Sleep(10 * time.Millisecond)
+
+	cancel()
+
+	// Verify all outputs are closed
+	for i, ch := range fo.Outputs() {
+		select {
+		case _, ok := <-ch:
+			if ok {
+				t.Errorf("worker %d: expected closed channel, got value", i)
+			}
+		case <-time.After(time.Second):
+			t.Errorf("worker %d: timeout waiting for shutdown", i)
+		}
+	}
+}
+
+func TestFanOut_ContextDoneBroadcast(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+
+	// BufferSize 0 to force blocking on send
+	fo, err := NewFanOut[int](
+		WithWorkerSize(3),
+		WithStrategy(BroadCast),
+		WithBufferSize(0),
+	)
+	if err != nil {
+		t.Fatalf("new fanout error: %v", err)
+	}
+
+	input := make(chan int)
+	fo.Run(ctx, input)
+
+	// Send one value to block the dispatcher in 'broadcast'
+	// It will spawn goroutines to send to all outputs, but they will block.
+	go func() {
+		input <- 1
+	}()
+
+	// Wait a bit to ensure we are stuck in the send case is active
+	time.Sleep(10 * time.Millisecond)
+
+	cancel()
+
+	// Verify all outputs are closed
+	for i, ch := range fo.Outputs() {
+		select {
+		case _, ok := <-ch:
+			if ok {
+				t.Errorf("worker %d: expected closed channel, got value", i)
+			}
+		case <-time.After(time.Second):
+			t.Errorf("worker %d: timeout waiting for shutdown", i)
+		}
+	}
+}
+
+func TestFanOut_RunMultipleTime(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("fo err: it should panic error when calling multiple Run")
+		}
+	}()
+
+	// BufferSize 0 to force blocking on send
+	fo, err := NewFanOut[int](
+		WithWorkerSize(3),
+		WithBufferSize(0),
+	)
+	if err != nil {
+		t.Fatalf("new fanout error: %v", err)
+	}
+
+	input := make(chan int, 10)
+	fo.Run(ctx, input)
+
+	fo.Run(ctx, input)
 }
