@@ -1,1 +1,9 @@
 .DS_Store
+
+# Test coverage
+*.out
+coverage.txt
+coverage.html
+
+# Test binaries
+*.test
