@@ -63,6 +63,7 @@ package fanout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -94,6 +95,9 @@ const (
 	// Use this strategy for event broadcasting or pub/sub patterns.
 	Broadcast
 )
+
+// ErrInvalidStrategy is returned when an unknown FanOutStrategy is provided.
+var ErrInvalidStrategy = errors.New("fanout: unknown distribution strategy")
 
 // FanOutConfig holds configuration options for creating a FanOut instance.
 type FanOutConfig struct {
@@ -158,11 +162,15 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 	}
 
 	if cfg.WorkerCount < 1 {
-		return nil, fmt.Errorf("fanout: number of workers must be greater than 0")
+		return nil, fmt.Errorf("fanout: worker count must be at least 1, got %d", cfg.WorkerCount)
 	}
 
 	if cfg.BufferSize < 0 {
-		return nil, fmt.Errorf("fanout: buffer size must not be a negative integer")
+		return nil, fmt.Errorf("fanout: buffer size must not be negative, got %d", cfg.BufferSize)
+	}
+
+	if cfg.Strategy != RoundRobin && cfg.Strategy != Broadcast {
+		return nil, ErrInvalidStrategy
 	}
 
 	outputs := make([]chan T, cfg.WorkerCount)
@@ -202,6 +210,10 @@ func NewFanOut[T any](opts ...Option) (*FanOut[T], error) {
 //	}()
 //	fo.Run(ctx, input)
 func (f *FanOut[T]) Run(ctx context.Context, input <-chan T) {
+	if input == nil {
+		panic("fanout: input channel must not be nil")
+	}
+
 	if !f.running.CompareAndSwap(false, true) {
 		panic("fanout: Run() called multiple times")
 	}

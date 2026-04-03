@@ -82,7 +82,7 @@ func NewFanIn[T any](opts ...Option) (*FanIn[T], error) {
 	}
 
 	if cfg.BufferSize < 0 {
-		return nil, fmt.Errorf("fanin: buffer size must be >= 0, got %d", cfg.BufferSize)
+		return nil, fmt.Errorf("fanin: buffer size must not be negative, got %d", cfg.BufferSize)
 	}
 
 	return &FanIn[T]{
@@ -120,6 +120,10 @@ func WithObserver(observer FanInObserver) Option {
 //
 // It panics if called after Run has been invoked.
 func (f *FanIn[T]) Add(ch <-chan T) {
+	if ch == nil {
+		panic("fanin: cannot add nil channel")
+	}
+
 	if f.running.Load() {
 		panic("fanin: Add() called after Run()")
 	}

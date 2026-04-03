@@ -25,59 +25,45 @@ func TestFanOut_NewFanOut(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		cfg       *FanOutConfig
+		opts      []Option
 		shouldErr bool
 	}{
 		{
-			name: "worker size is invalid should yield error",
-			cfg: &FanOutConfig{
-				WorkerCount: -10,
-			},
+			name:      "worker size is invalid should yield error",
+			opts:      []Option{WithWorkerCount(-10)},
 			shouldErr: true,
 		},
 		{
-			name: "buffer size is invalid should yield error",
-			cfg: &FanOutConfig{
-				BufferSize:  -10,
-				WorkerCount: 1,
-			},
+			name:      "buffer size is invalid should yield error",
+			opts:      []Option{WithBufferSize(-10), WithWorkerCount(1)},
 			shouldErr: true,
 		},
 		{
-			name: "valid all field should work",
-			cfg: &FanOutConfig{
-				BufferSize:  1,
-				WorkerCount: 1,
-			},
+			name:      "valid all field should work",
+			opts:      []Option{WithBufferSize(1), WithWorkerCount(1)},
 			shouldErr: false,
 		},
 		{
-			name: "worker count is zero should yield error",
-			cfg: &FanOutConfig{
-				WorkerCount: 0,
-			},
+			name:      "worker count is zero should yield error",
+			opts:      []Option{WithWorkerCount(0)},
 			shouldErr: true,
 		},
 		{
-			name: "valid broadcast strategy should work",
-			cfg: &FanOutConfig{
-				WorkerCount: 5,
-				BufferSize:  10,
-				Strategy:    Broadcast,
-			},
+			name:      "valid broadcast strategy should work",
+			opts:      []Option{WithWorkerCount(5), WithBufferSize(10), WithStrategy(Broadcast)},
 			shouldErr: false,
+		},
+		{
+			name:      "invalid strategy should yield error",
+			opts:      []Option{WithWorkerCount(1), WithStrategy(FanOutStrategy(99))},
+			shouldErr: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewFanOut[int](
-				WithBufferSize(test.cfg.BufferSize),
-				WithObserver(test.cfg.Observer),
-				WithWorkerCount(test.cfg.WorkerCount),
-				WithStrategy(test.cfg.Strategy),
-			)
+			_, err := NewFanOut[int](test.opts...)
 			if (err != nil) != test.shouldErr {
 				t.Errorf("validation error = %v, want err %v", err, test.shouldErr)
 			}
@@ -305,44 +291,36 @@ func TestFanOut_ContextCancel(t *testing.T) {
 
 	fo, err := NewFanOut[int](WithWorkerCount(3))
 	if err != nil {
-		t.Fatalf("fo: context cancel new fanout error %s", err)
+		t.Fatalf("failed to create fanout: %v", err)
 	}
 
 	input := make(chan int, 10)
-	received := make(chan int, 100)
 	fo.Run(ctx, input)
 
 	var wg sync.WaitGroup
 	for _, ch := range fo.Outputs() {
 		wg.Go(func() {
-			for v := range ch {
-				t.Logf("received %d", v)
-				received <- v
+			for range ch {
+				// drain
 			}
 		})
 	}
 
-	time.Sleep(10 * time.Millisecond)
-
 	cancel()
-
 	close(input)
 
-	wg.Wait()
+	// Must complete without hanging — proves cancellation works
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	close(received)
-
-	receivedCount := len(received)
-
-	t.Logf("Received %d messages before cancellation", receivedCount)
-
-	// Should receive at least some messages, but maybe not all
-	if receivedCount < 0 {
-		t.Fatal("fo error, received count must greater than 0")
-	}
-
-	if receivedCount > 10 {
-		t.Fatal("fo error")
+	select {
+	case <-done:
+		t.Log("FanOut cleaned up after cancellation")
+	case <-time.After(time.Second):
+		t.Fatal("FanOut did not shut down after context cancellation")
 	}
 }
 
@@ -360,29 +338,25 @@ func TestFanOut_ContextDoneRoundRobin(t *testing.T) {
 		t.Fatalf("new fanout error: %v", err)
 	}
 
-	input := make(chan int)
+	// Use buffered input so the dispatcher reads immediately,
+	// then blocks on the unbuffered output send.
+	input := make(chan int, 1)
+	input <- 1
 	fo.Run(ctx, input)
-
-	// Send one value to block the dispatcher in 'roundRobin'
-	// It will try to send to an output, but no one is reading.
-	go func() {
-		input <- 1
-	}()
-
-	// Wait a bit to ensure we are stuck in the send case
-	time.Sleep(10 * time.Millisecond)
 
 	cancel()
 
-	// Verify all outputs are closed
+	// Verify all outputs close after cancellation
 	for i, ch := range fo.Outputs() {
 		select {
 		case _, ok := <-ch:
 			if ok {
-				t.Errorf("worker %d: expected closed channel, got value", i)
+				// Value delivered before cancel — drain remaining
+				for range ch {
+				}
 			}
 		case <-time.After(time.Second):
-			t.Errorf("worker %d: timeout waiting for shutdown", i)
+			t.Fatalf("worker %d: timeout waiting for channel close after cancellation", i)
 		}
 	}
 }
@@ -401,29 +375,24 @@ func TestFanOut_ContextDoneBroadcast(t *testing.T) {
 		t.Fatalf("new fanout error: %v", err)
 	}
 
-	input := make(chan int)
+	// Use buffered input so the dispatcher reads immediately,
+	// then blocks on the unbuffered output sends in broadcast.
+	input := make(chan int, 1)
+	input <- 1
 	fo.Run(ctx, input)
-
-	// Send one value to block the dispatcher in 'broadcast'
-	// It will spawn goroutines to send to all outputs, but they will block.
-	go func() {
-		input <- 1
-	}()
-
-	// Wait a bit to ensure we are stuck in the send case is active
-	time.Sleep(10 * time.Millisecond)
 
 	cancel()
 
-	// Verify all outputs are closed
+	// Verify all outputs close after cancellation
 	for i, ch := range fo.Outputs() {
 		select {
 		case _, ok := <-ch:
 			if ok {
-				t.Errorf("worker %d: expected closed channel, got value", i)
+				for range ch {
+				}
 			}
 		case <-time.After(time.Second):
-			t.Errorf("worker %d: timeout waiting for shutdown", i)
+			t.Fatalf("worker %d: timeout waiting for channel close after cancellation", i)
 		}
 	}
 }
@@ -432,7 +401,6 @@ func TestFanOut_RunMultipleTime(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	// BufferSize 0 to force blocking on send
 	fo, err := NewFanOut[int](
 		WithWorkerCount(3),
 		WithBufferSize(0),
@@ -446,9 +414,26 @@ func TestFanOut_RunMultipleTime(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Errorf("fo err: it should panic error when calling multiple Run")
+			t.Error("expected panic when calling Run() multiple times")
 		}
 	}()
 
 	fo.Run(ctx, input)
+}
+
+func TestFanOut_NilInput(t *testing.T) {
+	t.Parallel()
+
+	fo, err := NewFanOut[int](WithWorkerCount(1))
+	if err != nil {
+		t.Fatalf("failed to create fanout: %v", err)
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when passing nil input channel")
+		}
+	}()
+
+	fo.Run(t.Context(), nil)
 }

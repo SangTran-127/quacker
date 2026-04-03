@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -24,16 +25,18 @@ func (t *mockTask) GetID() string {
 	return t.id
 }
 
-// mockObserver implements WorkerPoolObserver for testing
+type taskResult struct {
+	taskID string
+	err    error
+}
+
+// mockObserver implements the 3-method WorkerPoolObserver interface.
 type mockObserver struct {
-	mu             sync.Mutex
-	workerStarts   []int
-	workerStops    []int
-	tasksReceived  []string
-	tasksCompleted []string
-	tasksFailed    []string
-	tasksPanicked  []string
-	t              *testing.T
+	mu           sync.Mutex
+	workerStarts []int
+	workerStops  []int
+	tasksDone    []taskResult
+	t            *testing.T
 }
 
 func (o *mockObserver) OnWorkerStart(workerID int) {
@@ -54,39 +57,16 @@ func (o *mockObserver) OnWorkerStop(workerID int) {
 	}
 }
 
-func (o *mockObserver) OnTaskReceived(workerID int, taskID string) {
+func (o *mockObserver) OnTaskDone(workerID int, taskID string, err error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.tasksReceived = append(o.tasksReceived, taskID)
+	o.tasksDone = append(o.tasksDone, taskResult{taskID: taskID, err: err})
 	if o.t != nil {
-		o.t.Logf("Observer: worker %d received task %s", workerID, taskID)
-	}
-}
-
-func (o *mockObserver) OnTaskCompleted(workerID int, taskID string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.tasksCompleted = append(o.tasksCompleted, taskID)
-	if o.t != nil {
-		o.t.Logf("Observer: worker %d completed task %s", workerID, taskID)
-	}
-}
-
-func (o *mockObserver) OnTaskFailed(workerID int, taskID string, err error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.tasksFailed = append(o.tasksFailed, taskID)
-	if o.t != nil {
-		o.t.Logf("Observer: worker %d task %s failed: %v", workerID, taskID, err)
-	}
-}
-
-func (o *mockObserver) OnTaskPanic(workerID int, taskID string, panicValue any) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.tasksPanicked = append(o.tasksPanicked, taskID)
-	if o.t != nil {
-		o.t.Logf("Observer: worker %d task %s panicked: %v", workerID, taskID, panicValue)
+		if err != nil {
+			o.t.Logf("Observer: worker %d task %s failed: %v", workerID, taskID, err)
+		} else {
+			o.t.Logf("Observer: worker %d task %s succeeded", workerID, taskID)
+		}
 	}
 }
 
@@ -113,31 +93,23 @@ func TestNewWorkerPool(t *testing.T) {
 			shouldErr: false,
 		},
 		{
-			name: "invalid number of workers (zero)",
-			opts: []Option{
-				WithNumWorkers(0),
-			},
+			name:      "invalid number of workers (zero)",
+			opts:      []Option{WithNumWorkers(0)},
 			shouldErr: true,
 		},
 		{
-			name: "invalid number of workers (negative)",
-			opts: []Option{
-				WithNumWorkers(-1),
-			},
+			name:      "invalid number of workers (negative)",
+			opts:      []Option{WithNumWorkers(-1)},
 			shouldErr: true,
 		},
 		{
-			name: "invalid task queue size (zero)",
-			opts: []Option{
-				WithTaskQueueSize(0),
-			},
+			name:      "invalid task queue size (zero)",
+			opts:      []Option{WithTaskQueueSize(0)},
 			shouldErr: true,
 		},
 		{
-			name: "invalid task queue size (negative)",
-			opts: []Option{
-				WithTaskQueueSize(-1),
-			},
+			name:      "invalid task queue size (negative)",
+			opts:      []Option{WithTaskQueueSize(-1)},
 			shouldErr: true,
 		},
 	}
@@ -174,16 +146,14 @@ func TestWorkerPool_Observer(t *testing.T) {
 	pool.Start()
 
 	// Push successful tasks
-	for i := 0; i < taskCount; i++ {
+	for i := range taskCount {
 		task := &mockTask{id: fmt.Sprintf("task-%d", i)}
 		if err := pool.Push(task); err != nil {
 			t.Errorf("failed to push task: %v", err)
 		}
 	}
 
-	// Give time for tasks to process
-	time.Sleep(50 * time.Millisecond)
-
+	// StopAndWait drains the queue — no time.Sleep needed
 	pool.StopAndWait()
 
 	obs.mu.Lock()
@@ -197,12 +167,14 @@ func TestWorkerPool_Observer(t *testing.T) {
 		t.Errorf("expected %d worker stops, got %d", numWorkers, len(obs.workerStops))
 	}
 
-	// Verify task lifecycle
-	if len(obs.tasksReceived) != taskCount {
-		t.Errorf("expected %d tasks received, got %d", taskCount, len(obs.tasksReceived))
+	// Verify all tasks completed successfully
+	if len(obs.tasksDone) != taskCount {
+		t.Errorf("expected %d tasks done, got %d", taskCount, len(obs.tasksDone))
 	}
-	if len(obs.tasksCompleted) != taskCount {
-		t.Errorf("expected %d tasks completed, got %d", taskCount, len(obs.tasksCompleted))
+	for _, r := range obs.tasksDone {
+		if r.err != nil {
+			t.Errorf("task %s should have succeeded, got error: %v", r.taskID, r.err)
+		}
 	}
 }
 
@@ -233,17 +205,23 @@ func TestWorkerPool_ObserverTaskFailed(t *testing.T) {
 	}
 	pool.Push(task)
 
-	time.Sleep(50 * time.Millisecond)
 	pool.StopAndWait()
 
 	obs.mu.Lock()
 	defer obs.mu.Unlock()
 
-	if len(obs.tasksFailed) != 1 {
-		t.Errorf("expected 1 failed task, got %d", len(obs.tasksFailed))
+	failures := 0
+	for _, r := range obs.tasksDone {
+		if r.err != nil {
+			failures++
+		}
 	}
-	if len(obs.tasksFailed) > 0 && obs.tasksFailed[0] != "fail-task" {
-		t.Errorf("expected failed task id 'fail-task', got %s", obs.tasksFailed[0])
+
+	if failures != 1 {
+		t.Errorf("expected 1 failed task, got %d", failures)
+	}
+	if len(obs.tasksDone) > 0 && obs.tasksDone[0].taskID != "fail-task" {
+		t.Errorf("expected failed task id 'fail-task', got %s", obs.tasksDone[0].taskID)
 	}
 }
 
@@ -251,13 +229,15 @@ func TestWorkerPool_ObserverTaskPanic(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
-	obs := &mockObserver{t: t}
+	panicCaught := make(chan string, 1)
 
 	pool, err := NewWorkerPool[*mockTask](ctx,
 		WithName("observer-panic-test"),
 		WithNumWorkers(1),
 		WithTaskQueueSize(10),
-		WithObserver(obs),
+		WithPanicHandler(func(workerID int, taskID string, panicValue any) {
+			panicCaught <- taskID
+		}),
 	)
 	if err != nil {
 		t.Fatalf("failed to create pool: %v", err)
@@ -265,7 +245,6 @@ func TestWorkerPool_ObserverTaskPanic(t *testing.T) {
 
 	pool.Start()
 
-	// Push a panicking task
 	task := &mockTask{
 		id: "panic-task",
 		fn: func(ctx context.Context) error {
@@ -274,17 +253,15 @@ func TestWorkerPool_ObserverTaskPanic(t *testing.T) {
 	}
 	pool.Push(task)
 
-	time.Sleep(50 * time.Millisecond)
 	pool.StopAndWait()
 
-	obs.mu.Lock()
-	defer obs.mu.Unlock()
-
-	if len(obs.tasksPanicked) != 1 {
-		t.Errorf("expected 1 panicked task, got %d", len(obs.tasksPanicked))
-	}
-	if len(obs.tasksPanicked) > 0 && obs.tasksPanicked[0] != "panic-task" {
-		t.Errorf("expected panicked task id 'panic-task', got %s", obs.tasksPanicked[0])
+	select {
+	case taskID := <-panicCaught:
+		if taskID != "panic-task" {
+			t.Errorf("expected panic from 'panic-task', got %s", taskID)
+		}
+	default:
+		t.Error("expected PanicHandler to be called")
 	}
 }
 
@@ -326,7 +303,7 @@ func TestWorkerPool_ConcurrentPush(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("test timeout - possible deadlock")
+		t.Fatal("test timeout — possible deadlock in concurrent push")
 	}
 }
 
@@ -344,18 +321,21 @@ func TestWorkerPool_TaskQueueFull(t *testing.T) {
 	}
 
 	// Don't start the pool - queue will fill up
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		task := &mockTask{id: fmt.Sprintf("task-%d", i)}
 		if err := pool.Push(task); err != nil {
 			t.Errorf("unexpected error on push %d: %v", i, err)
 		}
 	}
 
-	// Third push should fail
+	// Third push should fail with ErrQueueFull
 	task := &mockTask{id: "overflow-task"}
 	err = pool.Push(task)
 	if err == nil {
-		t.Error("expected error when queue is full, got nil")
+		t.Fatal("expected error when queue is full, got nil")
+	}
+	if !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("expected ErrQueueFull, got: %v", err)
 	}
 }
 
@@ -455,7 +435,7 @@ func TestWorkerPool_ContextCancellation(t *testing.T) {
 	pool.Start()
 
 	// Push some tasks
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		task := &mockTask{id: fmt.Sprintf("task-%d", i)}
 		pool.Push(task)
 	}
@@ -463,10 +443,10 @@ func TestWorkerPool_ContextCancellation(t *testing.T) {
 	// Cancel the context
 	cancel()
 
-	// Wait should return (possibly with context error)
+	// Wait should return with context error
 	err = pool.Wait()
-	if err != nil && err != context.Canceled {
-		t.Logf("Wait returned: %v", err)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got: %v", err)
 	}
 }
 
@@ -504,7 +484,7 @@ func TestWorkerPool_ErrorHandler(t *testing.T) {
 	case <-errorHandlerCalled:
 		t.Log("ErrorHandler was called successfully")
 	case <-time.After(time.Second):
-		t.Error("ErrorHandler was not called")
+		t.Fatal("ErrorHandler was not called within timeout")
 	}
 
 	pool.StopAndWait()
@@ -544,7 +524,7 @@ func TestWorkerPool_PanicHandler(t *testing.T) {
 	case <-panicHandlerCalled:
 		t.Log("PanicHandler was called successfully")
 	case <-time.After(time.Second):
-		t.Error("PanicHandler was not called")
+		t.Fatal("PanicHandler was not called within timeout")
 	}
 
 	pool.StopAndWait()
@@ -567,21 +547,21 @@ func TestWorkerPool_PushContextCancelled(t *testing.T) {
 	// Cancel context before pushing
 	cancel()
 
-	// Fill the queue first to force the select to check ctx.Done()
+	// Fill the queue first
 	task1 := &mockTask{id: "task-1"}
-	pool.Push(task1) // This might succeed if queue has space
+	pool.Push(task1) // May succeed if queue has space
 
-	// Now try to push when queue is full and context is cancelled
+	// Push when queue is full and context is cancelled
 	task2 := &mockTask{id: "task-2"}
 	err = pool.Push(task2)
 
-	// Should get either queue full error or context cancelled error
 	if err == nil {
-		t.Log("Push succeeded (queue had space)")
-	} else if err == context.Canceled {
-		t.Log("Push returned context.Canceled as expected")
-	} else {
-		t.Logf("Push returned: %v", err)
+		t.Fatal("expected error when pushing to full queue with cancelled context")
+	}
+
+	// Should be either queue full or context cancelled
+	if !errors.Is(err, ErrQueueFull) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected ErrQueueFull or context.Canceled, got: %v", err)
 	}
 }
 
@@ -624,12 +604,35 @@ func TestWorkerPool_NoObserver(t *testing.T) {
 	}
 	pool.Push(task3)
 
-	time.Sleep(50 * time.Millisecond)
 	pool.StopAndWait()
 
 	// Verify metrics
 	metrics := pool.GetMetrics()
 	if metrics.TasksFailed != 2 {
-		t.Errorf("expected 2 failed tasks, got %d", metrics.TasksFailed)
+		t.Errorf("expected 2 failed tasks (1 error + 1 panic), got %d", metrics.TasksFailed)
 	}
+}
+
+// TestWorkerPool_StartMultipleTimes verifies Start() panics on second call.
+func TestWorkerPool_StartMultipleTimes(t *testing.T) {
+	t.Parallel()
+
+	pool, err := NewWorkerPool[*mockTask](t.Context(),
+		WithNumWorkers(1),
+		WithTaskQueueSize(1),
+	)
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	pool.Start()
+	defer pool.StopAndWait()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when calling Start() multiple times")
+		}
+	}()
+
+	pool.Start()
 }

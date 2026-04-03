@@ -186,7 +186,7 @@ func TestFanIn_ShouldPanicAddAfterRun(t *testing.T) {
 		t.Logf("value received %d", v)
 	}
 
-	fi.Add(make(<-chan int))
+	fi.Add(make(chan int))
 }
 
 func TestFanIn_Observer(t *testing.T) {
@@ -243,7 +243,7 @@ func TestFanIn_AddConcurrency(t *testing.T) {
 
 	count := 0
 	for v := range fi.Run(t.Context()) {
-		count += 1
+		count++
 		t.Logf("value received %d", v)
 	}
 
@@ -251,7 +251,41 @@ func TestFanIn_AddConcurrency(t *testing.T) {
 
 	expectedCount := numGoroutines * channelPerGoroutine
 
-	if count != numGoroutines*channelPerGoroutine {
+	if count != expectedCount {
 		t.Errorf("Add() concurrency failed, expect %d, got %d", expectedCount, count)
 	}
+}
+
+func TestFanIn_NilChannel(t *testing.T) {
+	t.Parallel()
+
+	fi, _ := NewFanIn[int]()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when adding nil channel")
+		}
+	}()
+
+	fi.Add(nil)
+}
+
+func TestFanIn_RunWithNoInputs(t *testing.T) {
+	t.Parallel()
+
+	fi, _ := NewFanIn[int]()
+
+	// Run with zero inputs should close output immediately
+	out := fi.Run(t.Context())
+
+	count := 0
+	for range out {
+		count++
+	}
+
+	if count != 0 {
+		t.Errorf("expected 0 values from empty fan-in, got %d", count)
+	}
+
+	<-fi.Done()
 }
