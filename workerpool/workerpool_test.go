@@ -544,14 +544,16 @@ func TestWorkerPool_PushContextCancelled(t *testing.T) {
 		t.Fatalf("failed to create pool: %v", err)
 	}
 
-	// Cancel context before pushing
+	// Fill the queue BEFORE cancelling — guarantees the slot is taken
+	task1 := &mockTask{id: "task-1"}
+	if err := pool.Push(task1); err != nil {
+		t.Fatalf("failed to fill queue: %v", err)
+	}
+
+	// Now cancel — queue is full AND context is done
 	cancel()
 
-	// Fill the queue first
-	task1 := &mockTask{id: "task-1"}
-	pool.Push(task1) // May succeed if queue has space
-
-	// Push when queue is full and context is cancelled
+	// Push must fail: queue full + context cancelled, both select cases error
 	task2 := &mockTask{id: "task-2"}
 	err = pool.Push(task2)
 
@@ -559,7 +561,6 @@ func TestWorkerPool_PushContextCancelled(t *testing.T) {
 		t.Fatal("expected error when pushing to full queue with cancelled context")
 	}
 
-	// Should be either queue full or context cancelled
 	if !errors.Is(err, ErrQueueFull) && !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected ErrQueueFull or context.Canceled, got: %v", err)
 	}

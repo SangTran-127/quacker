@@ -3,7 +3,7 @@
 <h1 align="center">Quacker</h1>
 
 <p align="center">
-  <strong>Type-safe, composable, and observable concurrency patterns for Go</strong>
+  <strong>Type-safe, composable concurrency patterns with backpressure for Go</strong>
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
 </p>
 
-**Quacker** provides a suite of generic, high-performance concurrency primitives designed for modern Go applications. It simplifies complex concurrent workflows while ensuring type safety and observability.
+**Quacker** provides composable, channel-native concurrency primitives for Go. Backpressure propagates naturally through Go's channel semantics — no custom protocols, no framework lock-in.
 
 ## Installation
 
@@ -25,26 +25,112 @@ go get github.com/SangTran-127/quacker
 
 **Requirements:** Go 1.25+
 
-## Quick Guide
+## Packages
 
-- Use [`fanout.FanOut`](https://pkg.go.dev/github.com/SangTran-127/quacker/fanout) to distribute work from a single stream to **multiple consumers**. Supports efficient `RoundRobin` load balancing or `Broadcast` messaging.
-- Use [`fanin.FanIn`](https://pkg.go.dev/github.com/SangTran-127/quacker/fanin) to **merge multiple channels** into a single cohesive stream.
-- Use [`workerpool.WorkerPool`](https://pkg.go.dev/github.com/SangTran-127/quacker/workerpool) for **bounded concurrency** when you need to process tasks with limited resources. Includes built-in task queuing, metrics tracking, and graceful shutdown.
+### [`pipeline`](https://pkg.go.dev/github.com/SangTran-127/quacker/pipeline) — Stream processing with backpressure
 
-## Highlights
+Compose stages into pipelines. Each stage transforms a channel into a channel. Backpressure is free — when a downstream stage is slow, upstream blocks automatically.
 
-- **Modern Go**: Leverages Go 1.25 features and strict type safety with generics.
-- **Observable**: First-class support for `Observer` interfaces (metrics, logging, tracing) and error/panic handlers.
-- **Robust**: Includes panic recovery, context cancellation propagation, and safe resource cleanup by default.
-- **Zero Dependencies**: Core logic depends only on the standard library (test deps excluded).
+```go
+ctx, cancel := context.WithCancelCause(ctx)
 
-## Benchmarks
+out := pipeline.Run(ctx, input,
+    pipeline.Map(3, func(ctx context.Context, e Event) (Event, bool) {
+        enriched, err := enrich(ctx, e)
+        if err != nil {
+            cancel(err)
+            return e, false
+        }
+        return enriched, true
+    }),
+    pipeline.Filter(func(e Event) bool { return e.Priority > 0 }),
+    pipeline.Sink(5, func(ctx context.Context, e Event) {
+        store(ctx, e)
+    }),
+)
 
-> **Coming Soon**
-> 
-> Benchmarks against standard library implementations are currently being developed. Preliminary results show minimal overhead with significant usability gains.
+for range out {}
+if err := context.Cause(ctx); err != nil {
+    log.Fatal(err)
+}
+```
+
+**Stages:** `Map`, `Filter`, `ForEach`, `Buffer`, `Tee`, `Take`, `Sink`, `Batch`
+
+### [`fanout`](https://pkg.go.dev/github.com/SangTran-127/quacker/fanout) — 1-to-N distribution
+
+Distribute a single stream to multiple consumers. `RoundRobin` for load balancing, `Broadcast` for pub/sub.
+
+```go
+fo, _ := fanout.NewFanOut[int](
+    fanout.WithWorkerCount(3),
+    fanout.WithStrategy(fanout.Broadcast),
+)
+fo.Run(ctx, input)
+
+for _, ch := range fo.Outputs() {
+    go consume(ch)
+}
+```
+
+### [`fanin`](https://pkg.go.dev/github.com/SangTran-127/quacker/fanin) — N-to-1 merge
+
+Merge multiple channels into a single stream.
+
+```go
+fi, _ := fanin.NewFanIn[int]()
+fi.Add(stream1)
+fi.Add(stream2)
+fi.Add(stream3)
+merged := fi.Run(ctx)
+```
+
+### [`workerpool`](https://pkg.go.dev/github.com/SangTran-127/quacker/workerpool) — Bounded task processing
+
+Fixed-size worker pool with push-based task queuing, metrics, and graceful shutdown.
+
+```go
+pool, _ := workerpool.NewWorkerPool[MyTask](ctx,
+    workerpool.WithNumWorkers(4),
+    workerpool.WithTaskQueueSize(100),
+)
+pool.Start()
+pool.Push(task)
+pool.StopAndWait()
+```
+
+## How they compose
+
+The primitives connect through channels — Go's universal connector:
+
+```
+                    +-- pipeline --+
+source --> fanout --+-- pipeline --+-- fanin --> pipeline --> sink
+                    +-- pipeline --+
+```
+
+```go
+fo.Run(ctx, source)
+
+fast := pipeline.Run(ctx, fo.Outputs()[0], pipeline.Map(10, enrichFast))
+slow := pipeline.Run(ctx, fo.Outputs()[1], pipeline.Map(2, enrichSlow))
+
+fi.Add(fast)
+fi.Add(slow)
+merged := fi.Run(ctx)
+
+out := pipeline.Run(ctx, merged, pipeline.Sink(5, store))
+```
+
+## Design
+
+- **Backpressure is free.** Channels block when full. No custom protocol.
+- **Errors use stdlib.** `context.WithCancelCause` + `context.Cause`. No custom error types.
+- **Shutdown is clear.** Close input for graceful drain. Cancel context for immediate stop.
+- **Small interfaces.** Observer interfaces are 2-3 methods, always optional.
+- **No dependencies.** Core logic is stdlib only (`golang.org/x/sync` for errgroup in workerpool).
 
 ---
 <p align="center">
-  Built with ❤️ in Go
+  Built with Go
 </p>
