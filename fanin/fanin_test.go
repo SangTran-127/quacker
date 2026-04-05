@@ -80,6 +80,15 @@ func TestFanIn_Add(t *testing.T) {
 		fi.Add(ch)
 	}
 
+	// Verify all 10 inputs are merged correctly
+	count := 0
+	for range fi.Run(t.Context()) {
+		count++
+	}
+
+	if count != 10 {
+		t.Fatalf("expected 10 items from 10 channels, got %d", count)
+	}
 }
 
 func TestFanIn_Run(t *testing.T) {

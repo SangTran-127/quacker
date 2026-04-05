@@ -190,7 +190,7 @@ func (w *WorkerPool[T]) Start() {
 			w.metrics.mu.Unlock()
 
 			if w.cfg.Observer != nil {
-				w.cfg.Observer.OnWorkerStart(workerID)
+				safeObserve(func() { w.cfg.Observer.OnWorkerStart(workerID) })
 			}
 
 			defer func() {
@@ -199,7 +199,7 @@ func (w *WorkerPool[T]) Start() {
 				w.metrics.mu.Unlock()
 
 				if w.cfg.Observer != nil {
-					w.cfg.Observer.OnWorkerStop(workerID)
+					safeObserve(func() { w.cfg.Observer.OnWorkerStop(workerID) })
 				}
 			}()
 
@@ -307,4 +307,11 @@ func (w *WorkerPool[T]) recordTaskFailed() {
 	w.metrics.mu.Lock()
 	defer w.metrics.mu.Unlock()
 	w.metrics.TasksFailed++
+}
+
+// safeObserve calls an observer method, recovering if it panics.
+// Observers are user-provided code — a boundary where recovery is justified.
+func safeObserve(fn func()) {
+	defer func() { recover() }()
+	fn()
 }

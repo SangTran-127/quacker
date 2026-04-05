@@ -141,7 +141,7 @@ func TestFanOut_ConcurrentStress(t *testing.T) {
 	wg.Wait()
 }
 
-func TestFanOut_RunBroadCast(t *testing.T) {
+func TestFanOut_RunBroadcast(t *testing.T) {
 	t.Parallel()
 	var wg sync.WaitGroup
 	workerCount := 2

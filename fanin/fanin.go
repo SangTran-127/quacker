@@ -134,7 +134,7 @@ func (f *FanIn[T]) Add(ch <-chan T) {
 	f.inputs = append(f.inputs, ch)
 
 	if f.cfg.Observer != nil {
-		f.cfg.Observer.OnInputAdded()
+		safeObserve(f.cfg.Observer.OnInputAdded)
 	}
 
 }
@@ -175,7 +175,7 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 				case v, ok := <-ch:
 					if !ok {
 						if f.cfg.Observer != nil {
-							f.cfg.Observer.OnInputClosed()
+							safeObserve(f.cfg.Observer.OnInputClosed)
 						}
 						return
 					}
@@ -205,6 +205,13 @@ func (f *FanIn[T]) Run(ctx context.Context) <-chan T {
 	}()
 
 	return out
+}
+
+// safeObserve calls an observer method, recovering if it panics.
+// Observers are user-provided code — a boundary where recovery is justified.
+func safeObserve(fn func()) {
+	defer func() { recover() }()
+	fn()
 }
 
 // Done returns a channel that is closed when the fan-in operation completes.

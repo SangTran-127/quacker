@@ -20,7 +20,7 @@
 //   - RoundRobin: Distributes values evenly across outputs in a rotating fashion.
 //     Each value goes to exactly one output channel, cycling through all workers.
 //
-//   - BroadCast: Sends each value to ALL output channels simultaneously.
+//   - Broadcast: Sends each value to ALL output channels simultaneously.
 //     All consumers receive every value from the input.
 //
 // # Consumer Responsibility
@@ -273,6 +273,14 @@ func (f *FanOut[T]) Outputs() []<-chan T {
 	return f.cachedOutputs
 }
 
+// safeObserve calls an observer method, recovering if it panics.
+// Observers are user-provided code — a boundary where recovery is justified,
+// same as net/http recovering handler panics.
+func safeObserve(fn func()) {
+	defer func() { recover() }()
+	fn()
+}
+
 // roundRobin distributes a value to the next output channel in rotation.
 // It cycles through outputs sequentially, ensuring even distribution of work.
 // The operation respects context cancellation for graceful shutdown.
@@ -282,7 +290,7 @@ func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) {
 	case f.outputs[target] <- value:
 		*index = (*index + 1) % f.cfg.WorkerCount
 		if f.cfg.Observer != nil {
-			f.cfg.Observer.OnDistribute()
+			safeObserve(f.cfg.Observer.OnDistribute)
 		}
 	case <-ctx.Done():
 		return
@@ -297,12 +305,11 @@ func (f *FanOut[T]) roundRobin(ctx context.Context, value T, index *int) {
 func (f *FanOut[T]) broadcast(ctx context.Context, value T) {
 	var wg sync.WaitGroup
 	for _, ch := range f.outputs {
-		// Create goroutine to prevent bottleneck if any consumer is slow
 		wg.Go(func() {
 			select {
 			case ch <- value:
 				if f.cfg.Observer != nil {
-					f.cfg.Observer.OnDistribute()
+					safeObserve(f.cfg.Observer.OnDistribute)
 				}
 			case <-ctx.Done():
 				return
@@ -322,7 +329,7 @@ func (f *FanOut[T]) closeAllOutput() {
 	}
 
 	if f.cfg.Observer != nil {
-		f.cfg.Observer.OnOutputClosed()
+		safeObserve(f.cfg.Observer.OnOutputClosed)
 	}
 }
 
